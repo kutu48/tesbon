@@ -102,6 +102,38 @@
         tbody.appendChild(tr);
       });
 
+      const tfoot = document.getElementById("table-footer");
+      const tfootPercent = document.getElementById("table-footer-percent");
+
+      const totals = {};
+      headers.forEach(key => {
+        totals[key] = 0;
+      });
+
+      data.forEach(row => {
+        headers.forEach(key => {
+          if (sumColumns.includes(key)) {
+            totals[key] += parseInt(row[key]) || 0;
+          }
+        });
+      });
+
+      const totalRow = headers.map(key => sumColumns.includes(key) ? `<td>${totals[key]}</td>` : "<td></td>");
+      tfoot.innerHTML = totalRow.join("");
+
+      const percentRow = headers.map(key => {
+        if (defectColumns.includes(key)) {
+          const totalCek = totals["TOTAL CEK"];
+          const percent = totalCek > 0 ? ((totals[key] / totalCek) * 100).toFixed(1) + "%" : "0%";
+          return `<td>${percent}</td>`;
+        } else if (key === "TOTAL CEK") {
+          return `<td>100%</td>`;
+        } else {
+          return "<td></td>";
+        }
+      });
+      tfootPercent.innerHTML = percentRow.join("");
+
       table = $('#inspectionTable').DataTable({
         pageLength: 10,
         initComplete: function () {
@@ -118,37 +150,6 @@
               if (d) select.append('<option value="' + d + '">' + d + '</option>');
             });
           });
-        },
-        drawCallback: function () {
-          const api = this.api();
-          const filteredData = api.rows({ search: 'applied' }).data().toArray();
-
-          const totals = {};
-          headers.forEach(key => totals[key] = 0);
-
-          filteredData.forEach(row => {
-            headers.forEach(key => {
-              if (sumColumns.includes(key)) {
-                totals[key] += parseInt(row[key]) || 0;
-              }
-            });
-          });
-
-          const totalRow = headers.map(key => sumColumns.includes(key) ? `<td>${totals[key]}</td>` : "<td></td>");
-          document.getElementById("table-footer").innerHTML = totalRow.join("");
-
-          const percentRow = headers.map(key => {
-            if (defectColumns.includes(key)) {
-              const totalCek = totals["TOTAL CEK"];
-              const percent = totalCek > 0 ? ((totals[key] / totalCek) * 100).toFixed(1) + "%" : "0%";
-              return `<td>${percent}</td>`;
-            } else if (key === "TOTAL CEK") {
-              return `<td>100%</td>`;
-            } else {
-              return "<td></td>";
-            }
-          });
-          document.getElementById("table-footer-percent").innerHTML = percentRow.join("");
         }
       });
     }
