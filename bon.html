@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>TEKNIKAL BONDING INSPECTION</title>
+  <title>Data Inspeksi QC</title>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
   <style>
     body {
@@ -23,10 +23,13 @@
       font-weight: bold;
       background-color: #f0f0f0;
     }
+    #savePdf {
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
-  <h2>TEKNIKAL BONDING INSPECTION</h2>
+  <h2>Data Inspeksi QC</h2>
 
   <div class="filter-container">
     <label for="startDate">Start Date:</label>
@@ -34,6 +37,7 @@
     <label for="endDate">End Date:</label>
     <input type="date" id="endDate">
     <button id="filterDate">Filter</button>
+    <button id="savePdf">Simpan ke PDF</button>
   </div>
 
   <table id="inspectionTable" class="display">
@@ -49,10 +53,15 @@
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
   <script>
     const sheetURL = "https://opensheet.elk.sh/1iedxX52mPxIII_9h67lY7d-Rwoqpzv3MPN7bd5BeQEg/Form%20Responses%201";
     let rawData = [];
     let table;
+    let currentData = [];
+
     const sumColumns = [
       "TOTAL CEK", "PEEL OF", "GLUE TIDAK MENGKILAP",
       "GLUE TIDAK RATA", "BUBLE"
@@ -76,6 +85,7 @@
     }
 
     function renderTable(data) {
+      currentData = data;
       if (table) {
         table.destroy();
         $('#inspectionTable tbody').empty();
@@ -169,6 +179,17 @@
       const end = document.getElementById("endDate").value ? new Date(document.getElementById("endDate").value + 'T23:59:59') : null;
       const filtered = filterByDate(rawData, start, end);
       renderTable(filtered);
+    });
+
+    document.getElementById("savePdf").addEventListener("click", () => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      const headers = Object.keys(currentData[0]);
+      const rows = currentData.map(row => headers.map(h => row[h]));
+
+      doc.autoTable({ head: [headers], body: rows });
+      doc.save("data-inspeksi.pdf");
     });
 
     loadData();
