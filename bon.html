@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Data Inspeksi QC</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    table {
+      width: 100%;
+    }
+    .filter-container {
+      margin-bottom: 20px;
+    }
+    .filter-container label,
+    .filter-container input {
+      margin-right: 10px;
+    }
+    tfoot tr {
+      font-weight: bold;
+      background-color: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+  <h2>Data Inspeksi QC</h2>
+
+  <div class="filter-container">
+    <label for="startDate">Start Date:</label>
+    <input type="date" id="startDate">
+    <label for="endDate">End Date:</label>
+    <input type="date" id="endDate">
+    <button id="filterDate">Filter</button>
+  </div>
+
+  <table id="inspectionTable" class="display">
+    <thead>
+      <tr id="table-header"></tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+    <tfoot>
+      <tr id="table-footer"></tr>
+      <tr id="table-footer-percent"></tr>
+    </tfoot>
+  </table>
+
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script>
+    const sheetURL = "https://opensheet.elk.sh/1iedxX52mPxIII_9h67lY7d-Rwoqpzv3MPN7bd5BeQEg/Form%20Responses%201";
+    let rawData = [];
+    let table;
+    const sumColumns = [
+      "TOTAL CEK", "PEEL OF", "GLUE TIDAK MENGKILAP",
+      "GLUE TIDAK RATA", "BUBLE"
+    ];
+    const defectColumns = [
+      "PEEL OF", "GLUE TIDAK MENGKILAP",
+      "GLUE TIDAK RATA", "BUBLE"
+    ];
+
+    function parseDate(str) {
+      const [month, day, yearAndTime] = str.split('/');
+      const [year, time] = yearAndTime.split(' ');
+      return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${time || "00:00:00"}`);
+    }
+
+    function filterByDate(data, start, end) {
+      return data.filter(row => {
+        const date = parseDate(row["Timestamp"]);
+        return (!start || date >= start) && (!end || date <= end);
+      });
+    }
+
+    function renderTable(data) {
+      if (table) {
+        table.destroy();
+        $('#inspectionTable tbody').empty();
+        $('#inspectionTable tfoot tr').empty();
+      }
+
+      const headers = Object.keys(data[0]);
+      const headerRow = document.getElementById("table-header");
+      headerRow.innerHTML = "";
+      headers.forEach(key => {
+        const th = document.createElement("th");
+        th.textContent = key;
+        headerRow.appendChild(th);
+      });
+
+      const tbody = document.getElementById("table-body");
+      data.forEach(row => {
+        const tr = document.createElement("tr");
+        headers.forEach(key => {
+          const td = document.createElement("td");
+          td.textContent = row[key];
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      table = $('#inspectionTable').DataTable({
+        pageLength: 10,
+        initComplete: function () {
+          this.api().columns().every(function () {
+            const column = this;
+            const select = $('<select><option value="">All</option></select>')
+              .appendTo($(column.header()))
+              .on('change', function () {
+                const val = $.fn.dataTable.util.escapeRegex($(this).val());
+                column.search(val ? '^' + val + '$' : '', true, false).draw();
+              });
+
+            column.data().unique().sort().each(function (d) {
+              if (d) select.append('<option value="' + d + '">' + d + '</option>');
+            });
+          });
+        },
+        drawCallback: function () {
+          const api = this.api();
+          const filteredData = api.rows({ search: 'applied' }).data().toArray();
+
+          const totals = {};
+          headers.forEach(key => totals[key] = 0);
+
+          filteredData.forEach(row => {
+            headers.forEach(key => {
+              if (sumColumns.includes(key)) {
+                totals[key] += parseInt(row[key]) || 0;
+              }
+            });
+          });
+
+          const totalRow = headers.map(key => sumColumns.includes(key) ? `<td>${totals[key]}</td>` : "<td></td>");
+          document.getElementById("table-footer").innerHTML = totalRow.join("");
+
+          const percentRow = headers.map(key => {
+            if (defectColumns.includes(key)) {
+              const totalCek = totals["TOTAL CEK"];
+              const percent = totalCek > 0 ? ((totals[key] / totalCek) * 100).toFixed(1) + "%" : "0%";
+              return `<td>${percent}</td>`;
+            } else if (key === "TOTAL CEK") {
+              return `<td>100%</td>`;
+            } else {
+              return "<td></td>";
+            }
+          });
+          document.getElementById("table-footer-percent").innerHTML = percentRow.join("");
+        }
+      });
+    }
+
+    function loadData() {
+      fetch(sheetURL)
+        .then(res => res.json())
+        .then(data => {
+          rawData = data;
+          renderTable(data);
+        })
+        .catch(err => console.error("Gagal mengambil data:", err));
+    }
+
+    document.getElementById("filterDate").addEventListener("click", () => {
+      const start = document.getElementById("startDate").value ? new Date(document.getElementById("startDate").value) : null;
+      const end = document.getElementById("endDate").value ? new Date(document.getElementById("endDate").value + 'T23:59:59') : null;
+      const filtered = filterByDate(rawData, start, end);
+      renderTable(filtered);
+    });
+
+    loadData();
+  </script>
+</body>
+</html>
