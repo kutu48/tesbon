@@ -1,198 +1,251 @@
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <title>BONDING INSPECTION</title>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GLOBAL REPORT</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
+    body { font-family: Arial, sans-serif; padding: 20px; }
+
+    h1.page-title {
+      text-align: center;
+      font-size: 24px;
+      margin-bottom: 30px;
+      text-transform: uppercase;
     }
-    table {
-      width: 100%;
-    }
-    .filter-container {
+
+    .top-container {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
       margin-bottom: 20px;
     }
-    .filter-container label,
-    .filter-container input {
-      margin-right: 10px;
+
+    .chart-container, .summary-box {
+      width: 48%;
+      min-width: 300px;
     }
-    tfoot tr {
-      font-weight: bold;
-      background-color: #f0f0f0;
+
+    #defectChart {
+      height: 300px !important;
     }
-    #savePdf {
-      margin-top: 10px;
+
+    .summary-box {
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .summary-box h3 { margin-bottom: 10px; }
+    .summary-box div { margin-bottom: 5px; }
+
+    .filter-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    table.dataTable {
+      border-collapse: collapse;
+      border: 1px solid #ccc;
+    }
+
+    table.dataTable th, table.dataTable td {
+      border: 1px solid #ccc;
+      text-align: center;
+    }
+
+    select {
+      width: 100%;
+    }
+
+    .line-button {
+      padding: 6px 12px;
+      margin: 4px;
+      border: 1px solid #007bff;
+      background-color: #f0f8ff;
+      color: #007bff;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .line-button.active {
+      background-color: #007bff;
+      color: white;
     }
   </style>
 </head>
 <body>
-  <h2>BONDING INSPECTION</h2>
 
-  <div class="filter-container">
-    <label for="startDate">Start Date:</label>
-    <input type="date" id="startDate">
-    <label for="endDate">End Date:</label>
-    <input type="date" id="endDate">
-    <button id="filterDate">Filter</button>
-    <button id="savePdf">Simpan ke PDF</button>
+  <h1 class="page-title">BONDING INSPECTION</h1>
+
+  <div class="top-container">
+    <div class="chart-container">
+      <canvas id="defectChart"></canvas>
+    </div>
+    <div class="summary-box" id="summaryBox">
+      <h3>Ringkasan Data</h3>
+      <div id="totalCek">Total Cek: 0</div>
+      <div id="defectSummary"></div>
+    </div>
   </div>
 
-  <table id="inspectionTable" class="display">
-    <thead>
-      <tr id="table-header"></tr>
-    </thead>
-    <tbody id="table-body"></tbody>
-    <tfoot>
-      <tr id="table-footer"></tr>
-      <tr id="table-footer-percent"></tr>
-    </tfoot>
-  </table>
+  <div class="filter-container">
+    <label>Start Date: <input type="date" id="startDate"></label>
+    <label>End Date: <input type="date" id="endDate"></label>
+    <div id="lokasiButtons"></div>
+  </div>
 
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <table id="dataTable" class="display" style="width:100%">
+    <thead>
+      <tr id="tableHeader"></tr>
+      <tr id="filterRow"></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script>
     const sheetURL = "https://opensheet.elk.sh/1iedxX52mPxIII_9h67lY7d-Rwoqpzv3MPN7bd5BeQEg/Form%20Responses%201";
-    let rawData = [];
-    let table;
-    let currentData = [];
-
-    const sumColumns = [
-      "TOTAL CEK", "PEEL OF", "GLUE TIDAK MENGKILAP",
-      "GLUE TIDAK RATA", "BUBLE"
-    ];
+    const nikURL = "https://opensheet.elk.sh/1iedxX52mPxIII_9h67lY7d-Rwoqpzv3MPN7bd5BeQEg/Nik";
     const defectColumns = [
-      "PEEL OF", "GLUE TIDAK MENGKILAP",
-      "GLUE TIDAK RATA", "BUBLE"
+      "PEEL OF", "GLUE TIDAK MENGKILAP", "GLUE TIDAK RATA",
+      "BUBLE"
     ];
+    let allData = [];
+    let nikLookup = {};
 
-    function parseDate(str) {
-      const [month, day, yearAndTime] = str.split('/');
-      const [year, time] = yearAndTime.split(' ');
-      return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${time || "00:00:00"}`);
+    function renderChart(data) {
+      const lineDefects = {};
+      data.forEach(row => {
+        const lokasi = row["LOKASI"];
+        const totalDefect = defectColumns.reduce((sum, col) => sum + parseInt(row[col] || 0), 0);
+        lineDefects[lokasi] = (lineDefects[lokasi] || 0) + totalDefect;
+      });
+      const sorted = Object.entries(lineDefects).sort((a, b) => b[1] - a[1]);
+      const labels = sorted.map(x => x[0]);
+      const values = sorted.map(x => x[1]);
+
+      const ctx = document.getElementById('defectChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Jumlah Defect per Line',
+            data: values,
+            backgroundColor: '#ff6384'
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+      });
+
+      renderLineButtons(labels);
     }
 
-    function filterByDate(data, start, end) {
-      return data.filter(row => {
-        const date = parseDate(row["Timestamp"]);
-        return (!start || date >= start) && (!end || date <= end);
+    function renderLineButtons(lines) {
+      const container = $('#lokasiButtons');
+      container.empty();
+      lines.forEach(line => {
+        const btn = $('<button class="line-button">').text(line).on('click', function () {
+          $('.line-button').removeClass('active');
+          $(this).addClass('active');
+          filterAndUpdate();
+        });
+        container.append(btn);
       });
     }
 
-    function renderTable(data) {
-      currentData = data;
-      if (table) {
-        table.destroy();
-        $('#inspectionTable tbody').empty();
-        $('#inspectionTable tfoot tr').empty();
-      }
-
-      const headers = Object.keys(data[0]);
-      const headerRow = document.getElementById("table-header");
-      headerRow.innerHTML = "";
-      headers.forEach(key => {
-        const th = document.createElement("th");
-        th.textContent = key;
-        headerRow.appendChild(th);
-      });
-
-      const tbody = document.getElementById("table-body");
+    function renderSummary(data) {
+      let totalCek = 0;
+      const defectTotals = {};
+      defectColumns.forEach(col => defectTotals[col] = 0);
       data.forEach(row => {
-        const tr = document.createElement("tr");
-        headers.forEach(key => {
-          const td = document.createElement("td");
-          td.textContent = row[key];
-          tr.appendChild(td);
+        const cek = parseInt(row["TOTAL CEK"] || 0);
+        totalCek += cek;
+        defectColumns.forEach(col => defectTotals[col] += parseInt(row[col] || 0));
+      });
+
+      $('#totalCek').text(`Total Cek: ${totalCek}`);
+      let html = '';
+      defectColumns.forEach(col => {
+        const jumlah = defectTotals[col];
+        const persentase = totalCek ? ((jumlah / totalCek) * 100).toFixed(2) : 0;
+        html += `<div>${col}: ${jumlah} (${persentase}%)</div>`;
+      });
+      $('#defectSummary').html(html);
+    }
+
+    function filterAndUpdate() {
+      const lineFilter = $('.line-button.active').text();
+      const start = $('#startDate').val();
+      const end = $('#endDate').val();
+
+      const filtered = allData.filter(row => {
+        const tgl = new Date(row.Timestamp);
+        const inDateRange = (!start || tgl >= new Date(start)) && (!end || tgl <= new Date(end));
+        const inLine = !lineFilter || row["LOKASI"] === lineFilter;
+        return inDateRange && inLine;
+      });
+
+      const table = $('#dataTable').DataTable();
+      table.clear().rows.add(filtered).draw();
+
+      renderSummary(filtered);
+    }
+
+    $(document).ready(function () {
+      Promise.all([$.getJSON(sheetURL), $.getJSON(nikURL)]).then(([sheetData, nikData]) => {
+        nikData.forEach(item => nikLookup[item.NIK] = item.NAMA);
+        allData = sheetData.map(row => {
+          const newRow = { ...row };
+          newRow["NAMA"] = nikLookup[row["NIK OP"]] || "";
+          return newRow;
         });
-        tbody.appendChild(tr);
-      });
 
-      const tfoot = document.getElementById("table-footer");
-      const tfootPercent = document.getElementById("table-footer-percent");
+        let columns = Object.keys(allData[0]).filter(c => c !== "SUHU TEFLON" && c !== "NAMA"); 
+        const insertIndex = columns.indexOf("NIK OP") + 1;
+        columns.splice(insertIndex, 0, "NAMA");
 
-      const totals = {};
-      headers.forEach(key => {
-        totals[key] = 0;
-      });
 
-      data.forEach(row => {
-        headers.forEach(key => {
-          if (sumColumns.includes(key)) {
-            totals[key] += parseInt(row[key]) || 0;
-          }
+        columns.forEach(col => {
+          $('#tableHeader').append(`<th>${col}</th>`);
+          $('#filterRow').append(`<th><select class="column-filter"><option value="">All</option></select></th>`);
         });
-      });
 
-      const totalRow = headers.map(key => sumColumns.includes(key) ? `<td>${totals[key]}</td>` : "<td></td>");
-      tfoot.innerHTML = totalRow.join("");
+        const table = $('#dataTable').DataTable({
+          data: allData,
+          columns: columns.map(col => ({ data: col })),
+          order: [[0, 'desc']],
+          initComplete: function () {
+            this.api().columns().every(function (colIdx) {
+              const column = this;
+              const select = $('select', $('#filterRow th').eq(colIdx));
 
-      const percentRow = headers.map(key => {
-        if (defectColumns.includes(key)) {
-          const totalCek = totals["TOTAL CEK"];
-          const percent = totalCek > 0 ? ((totals[key] / totalCek) * 100).toFixed(1) + "%" : "0%";
-          return `<td>${percent}</td>`;
-        } else if (key === "TOTAL CEK") {
-          return `<td>100%</td>`;
-        } else {
-          return "<td></td>";
-        }
-      });
-      tfootPercent.innerHTML = percentRow.join("");
+              column.data().unique().sort().each(function (d) {
+                if (d !== undefined && d !== null && d !== "")
+                  select.append(`<option value="${d}">${d}</option>`);
+              });
 
-      table = $('#inspectionTable').DataTable({
-        pageLength: 10,
-        initComplete: function () {
-          this.api().columns().every(function () {
-            const column = this;
-            const select = $('<select><option value="">All</option></select>')
-              .appendTo($(column.header()))
-              .on('change', function () {
+              select.on('change', function () {
                 const val = $.fn.dataTable.util.escapeRegex($(this).val());
                 column.search(val ? '^' + val + '$' : '', true, false).draw();
               });
-
-            column.data().unique().sort().each(function (d) {
-              if (d) select.append('<option value="' + d + '">' + d + '</option>');
             });
-          });
-        }
+          }
+        });
+
+        renderSummary(allData);
+        renderChart(allData);
+
+        $('#startDate, #endDate').on('change', filterAndUpdate);
       });
-    }
-
-    function loadData() {
-      fetch(sheetURL)
-        .then(res => res.json())
-        .then(data => {
-          rawData = data;
-          renderTable(data);
-        })
-        .catch(err => console.error("Gagal mengambil data:", err));
-    }
-
-    document.getElementById("filterDate").addEventListener("click", () => {
-      const start = document.getElementById("startDate").value ? new Date(document.getElementById("startDate").value) : null;
-      const end = document.getElementById("endDate").value ? new Date(document.getElementById("endDate").value + 'T23:59:59') : null;
-      const filtered = filterByDate(rawData, start, end);
-      renderTable(filtered);
     });
-
-    document.getElementById("savePdf").addEventListener("click", () => {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-
-      const headers = Object.keys(currentData[0]);
-      const rows = currentData.map(row => headers.map(h => row[h]));
-
-      doc.autoTable({ head: [headers], body: rows });
-      doc.save("data-inspeksi.pdf");
-    });
-
-    loadData();
   </script>
 </body>
 </html>
