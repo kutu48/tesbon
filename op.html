@@ -1,0 +1,137 @@
+<script>
+  let data = [], nikData = {}, filteredData = [];
+
+  async function fetchData() {
+    const [reportRes, nikRes] = await Promise.all([
+      fetch('https://opensheet.elk.sh/1iedxX52mPxIII_9h67lY7d-Rwoqpzv3MPN7bd5BeQEg/Form%20Responses%201'),
+      fetch('https://opensheet.elk.sh/1iedxX52mPxIII_9h67lY7d-Rwoqpzv3MPN7bd5BeQEg/nik')
+    ]);
+
+    const reportJson = await reportRes.json();
+    const nikJson = await nikRes.json();
+
+    nikJson.forEach(entry => {
+      nikData[entry.NIK] = entry.NAMA;
+      const option = document.createElement('option');
+      option.value = entry.NIK;
+      option.textContent = `${entry.NIK} - ${entry.NAMA}`;
+      document.getElementById('nik').appendChild(option);
+    });
+
+    data = reportJson.map(row => ({
+      ...row,
+      Timestamp: parseSimpleDate(row.Timestamp),
+      'TOTAL CEK': parseInt(row['TOTAL CEK']) || 0,
+      'PEEL OF': parseInt(row['PEEL OF']) || 0,
+      'GLUE TIDAK MENGKILAP': parseInt(row['GLUE TIDAK MENGKILAP']) || 0,
+      'GLUE TIDAK RATA': parseInt(row['GLUE TIDAK RATA']) || 0,
+      'BUBLE': parseInt(row['BUBLE']) || 0,
+    }));
+  }
+
+  function parseSimpleDate(str) {
+    const [month, day, year] = str.split('/');
+    return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00`);
+  }
+
+  function filterData() {
+    const nik = document.getElementById('nik').value;
+    const startInput = document.getElementById('startDate').value;
+    const endInput = document.getElementById('endDate').value;
+
+    const startDate = startInput ? new Date(startInput) : null;
+    const endDate = endInput ? new Date(endInput) : null;
+
+    filteredData = data.filter(row => {
+      const nikMatch = !nik || row['NIK OP'] === nik;
+      const dateMatch = (!startDate || row.Timestamp >= startDate) &&
+                        (!endDate || row.Timestamp <= endDate);
+      return nikMatch && dateMatch;
+    });
+
+    displayData(filteredData);
+
+    document.getElementById('infoNIK').textContent = nik || '-';
+    document.getElementById('infoNama').textContent = nikData[nik] || '-';
+    document.getElementById('infoStart').textContent = startInput ? new Date(startInput).toLocaleString() : '-';
+    document.getElementById('infoEnd').textContent = endInput ? new Date(endInput).toLocaleString() : '-';
+
+    document.getElementById('dataTable').style.display = 'table';
+  }
+
+  function displayData(rows) {
+    const tbody = document.getElementById('dataTable').querySelector('tbody');
+    tbody.innerHTML = '';
+
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${formatDate(row.Timestamp)}</td>
+        <td>${row['NO MESIN']}</td>
+        <td>${row.LOKASI}</td>
+        <td>${row['NIK OP']}</td>
+        <td>${nikData[row['NIK OP']] || '-'}</td>
+        <td>${row.PROSES}</td>
+        <td>${row['TOTAL CEK']}</td>
+        <td>${row['PEEL OF']}</td>
+        <td>${row['GLUE TIDAK MENGKILAP']}</td>
+        <td>${row['GLUE TIDAK RATA']}</td>
+        <td>${row['BUBLE']}</td>
+        <td>${row.STYLE}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    updateSummary(rows);
+  }
+
+  function updateSummary(rows) {
+    let total = 0, peel = 0, mengkilap = 0, rata = 0, buble = 0;
+
+    rows.forEach(row => {
+      total += row['TOTAL CEK'];
+      peel += row['PEEL OF'];
+      mengkilap += row['GLUE TIDAK MENGKILAP'];
+      rata += row['GLUE TIDAK RATA'];
+      buble += row['BUBLE'];
+    });
+
+    const pct = (val) => total > 0 ? ` (${((val / total) * 100).toFixed(1)}%)` : ' (0%)';
+
+    document.getElementById('totalCek').textContent = total;
+    document.getElementById('PEELOFr').textContent = peel + pct(peel);
+    document.getElementById('GLUETIDAKMENGKILAP').textContent = mengkilap + pct(mengkilap);
+    document.getElementById('GLUETIDAKRATA').textContent = rata + pct(rata);
+    document.getElementById('BUBLE').textContent = buble + pct(buble);
+  }
+
+  function formatDate(date) {
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    const y = date.getFullYear();
+    return `${m}/${d}/${y}`;
+  }
+
+  async function printPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    doc.setFontSize(14);
+    doc.text("Laporan Data QC", 14, 15);
+
+    let y = 25;
+    filteredData.forEach((row, i) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+      const nama = nikData[row['NIK OP']] || '-';
+      doc.text(`${i + 1}. ${row['NIK OP']} - ${nama} - ${formatDate(row.Timestamp)}`, 14, y);
+      y += 8;
+    });
+
+    doc.save("laporan_qc.pdf");
+  }
+
+  fetchData();
+</script>
